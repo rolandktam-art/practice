@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Debate Coach">
+<title>Debate Coach</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1d2433;--mute:#6b7385;--line:#e4e0d6;--accent:#2f6f6d;--accent-ink:#fff;--warn:#b45309;--warnbg:#fff4e0;--good:#2f7d4f;--bad:#b42318}
+@media(prefers-color-scheme:dark){:root{--bg:#12151c;--card:#1b202b;--ink:#eceff5;--mute:#98a1b5;--line:#2b3242;--warnbg:#3a2a12;--warn:#f0b35a}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,system-ui,"Segoe UI",sans-serif;padding-top:env(safe-area-inset-top)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px 6px;max-width:560px;margin:0 auto}
+h1{font-size:22px;margin:0}h2{font-size:17px;margin:0 0 8px}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
+.kidcard{border-left:6px solid var(--accent);cursor:pointer}
+button{font:inherit;border:0;border-radius:12px;padding:12px 16px;background:var(--accent);color:var(--accent-ink);font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.sm{padding:6px 10px;font-size:14px;border-radius:9px}
+button:disabled{opacity:.5}
+button.block{width:100%}
+input,textarea,select{font:inherit;width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+textarea{resize:none}
+label{display:block;font-size:14px;color:var(--mute);margin:12px 0 4px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row.between{justify-content:space-between}
+.grow{flex:1}
+.mute{color:var(--mute)}.small{font-size:13px}
+.note{background:var(--warnbg);color:var(--warn);border-radius:12px;padding:10px 12px;margin:12px 0}
+.bar{height:10px;border-radius:6px;background:var(--line);overflow:hidden;margin:4px 0 2px}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.skill{margin:10px 0}
+.skill .row{justify-content:space-between}
+.up{color:var(--good)}.down{color:var(--bad)}
+.chip{display:block;text-align:left;width:100%;margin:6px 0;background:var(--card);color:var(--ink);border:1px solid var(--line);font-weight:500}
+.chip.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.modes .chip{margin:0}
+.bubble{max-width:88%;padding:10px 12px;border-radius:14px;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble.coach{background:var(--card);border:1px solid var(--line)}
+.bubble.kid{background:var(--accent);color:var(--accent-ink);margin-left:auto}
+.bubble small{display:block;opacity:.75;font-size:12px;margin-top:2px}
+#msgs{padding-bottom:210px}
+.composer{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+.composer>div,.composer>textarea{max-width:560px;margin-left:auto;margin-right:auto}
+.composer>textarea{display:block;margin-top:6px;margin-bottom:8px}
+.mic{flex:1;padding:16px}
+.mic.live{background:var(--bad);color:#fff}
+.note-row{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--line)}
+.note-row:last-child{border-bottom:0}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s 0.8s linear infinite;vertical-align:-3px;margin-right:8px}
+@keyframes s{to{transform:rotate(360deg)}}
+ul.tight{margin:4px 0 0;padding-left:20px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<input type="file" id="importFile" accept="application/json" hidden>
+<script>
+'use strict';
+/* ============ helpers ============ */
+const KEY = 'debateCoach.v1';
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ymd = d => d.toLocaleDateString('en-CA');
+const today = () => ymd(new Date());
+const addDays = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+const uid = () => Math.random().toString(36).slice(2, 9);
+const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+const pick = (arr, n) => arr.slice().sort(() => Math.random() - .5).slice(0, n);
+
+/* ============ rubrics (the fixed yardstick that makes the trend line meaningful) ============ */
+const RUBRICS = {
+  older: [
+    {id:'claim',   name:'Claim',     a:{1:'Position unclear or shifts mid-speech',3:'Clear position, but wording is loose',5:'One precise sentence that frames the whole speech'}},
+    {id:'structure',name:'Organization', a:{1:'Points come in random order; a listener cannot tell where one argument ends and the next begins',3:'Has an opening and reasons, but no roadmap or signposts, and some points jump back and forth',5:'Roadmap up front, numbered arguments, each one in claim-because-example-so order, short closing summary'}},
+    {id:'warrant', name:'Reasoning', a:{1:'States things without saying why',3:'Gives a reason but skips a step in the logic',5:'Every step from reason to claim is explicit and sound'}},
+    {id:'framework',name:'Value and criterion', a:{1:'No value or criterion (Lincoln-Douglas only)',3:'Names a value and criterion but the arguments do not clearly connect back to them',5:'Defines value and criterion in one clean sentence each and ties every contention back to them'}},
+    {id:'evidence',name:'Evidence',  a:{1:'No example or facts',3:'A relevant example or fact, vaguely used',5:'Specific, accurate, well chosen, and tied back to the claim'}},
+    {id:'clash',   name:'Rebuttal',  a:{1:'Ignores the other side',3:'Answers a point, but not the strongest one',5:"Answers the opponent's best argument directly and turns it toward her own case"}},
+    {id:'weighing',name:'Weighing',  a:{1:'No comparison of impacts',3:"Says her point matters but not why it matters more than the opponent's",5:'Explains clearly why her impacts outweigh on size, likelihood or timeframe'}},
+    {id:'advance', name:'Advancing the debate', a:{1:'Repeats what earlier speakers already said (Congress only)',3:'Adds a new point but does not respond to any earlier speaker',5:'Names an earlier speaker, refutes them, and adds a genuinely new argument that moves the debate forward'}},
+    {id:'questioning',name:'Questions and answers', a:{1:'Answers are long or off point; her own questions are vague or missing',3:'Answers directly but does not steer back to her case; questions are relevant but not pointed',5:'Short direct answers that reinforce her case; sharp questions that expose a gap in the speaker\'s argument'}},
+    {id:'delivery',name:'Delivery',  a:{1:'Hard to follow, rushed or trailing off',3:'Understandable, uneven pace, little signposting',5:'Clear, controlled pace, signposts, emphasis on key points'}},
+    {id:'time',    name:'Time use',  a:{1:'Far under or over the target time',3:'Within about a quarter of target time',5:'Uses the full time with the key points landing before the end'}}
+  ],
+  younger: [
+    {id:'claim',   name:'Saying her side', a:{1:'Unclear what she thinks',3:'Says her side but sometimes wanders',5:'States her side clearly at the start and again at the end'}},
+    {id:'structure',name:'Organization',   a:{1:'Ideas jump around, no clear beginning or end',3:'Has a start and reasons, but does not say first, second, or finish with a wrap-up',5:'Says her side, then first and second reasons in order, then a wrap-up that repeats her side'}},
+    {id:'reason',  name:'Reasons',         a:{1:'No "because"',3:'One reason, not fully explained',5:'Two or three clear reasons, each explained with "because"'}},
+    {id:'example', name:'Examples',        a:{1:'No example',3:'An example that fits loosely',5:'A real, specific example that proves the reason'}},
+    {id:'response',name:'Answering back',  a:{1:"Does not answer the other side",3:'Answers a point but not the main one',5:"Repeats the other side's point, then answers it directly"}},
+    {id:'delivery',name:'Speaking',        a:{1:'Very quiet, very fast, or stops a lot',3:'Understandable, uneven pace',5:'Clear, steady pace, sounds confident'}}
+  ]
+};
+
+const TOPICS = {
+  older: [
+    'Bill: A bill to require all middle and high schools in California to start no earlier than 8:30 a.m.',
+    'Bill: A bill to ban smartphones in K-12 classrooms nationwide.',
+    'Bill: A bill to provide free public transit for all students under 18.',
+    'Bill: A bill to make voting mandatory in federal elections.',
+    'Bill: A bill to require one hour of daily physical education in all public schools.',
+    'Bill: A bill to lower the voting age to 16 in national elections.',
+    'Resolved: Civil disobedience is justified in a democracy.',
+    'Resolved: Individual rights outweigh the common good.',
+    'Resolved: Social media does more harm than good for teenagers.',
+    'Resolved: Middle schools should start no earlier than 9 a.m.',
+    'Resolved: Student athletes should be paid.',
+    'Resolved: Zoos should be abolished.',
+    'Resolved: Homework should be banned in middle school.',
+    'Resolved: Cities should ban cars from downtown areas.',
+    'Resolved: Space exploration is worth its cost.',
+    'Resolved: Standardized tests should be eliminated.',
+    'Resolved: Liberty is more important than equality.',
+    'Resolved: Justice requires that wrongdoers be punished.',
+    'Resolved: The pursuit of knowledge is more valuable than the pursuit of happiness.',
+    'Resolved: Honesty is more important than kindness.'
+  ],
+  younger: [
+    'Kids should get a later bedtime on weekends.',
+    'Tablets are better than paper for schoolwork.',
+    'Schools should have longer recess.',
+    'Pets should be allowed in school.',
+    'Kids should earn an allowance for chores.',
+    'Every school should have a garden.',
+    'Schools should serve free lunch to every student.',
+    'Homework should be given every day.',
+    'Kids should be allowed to choose their own clothes for school.',
+    'Zoos are good for animals.',
+    'Bill: Every school in California must have a garden.',
+    'Bill: Kids under 12 may not use phones at school.'
+  ]
+};
+
+/* what each event actually looks like, so practice matches what she will face */
+const FORMAT_GUIDE = {
+  'Congress': 'Congressional Debate, a mock legislature. She speaks FOR or AGAINST a bill in a chamber of students, and speeches alternate for and against. The coach plays the presiding officer and the other students. The first speech on a bill is the sponsorship speech: it explains the bill and gives the main arguments. Every later speech must respond to at least one earlier speaker BY NAME and add something new; repeating earlier arguments loses points. Speech frame: attention getter, one-sentence thesis with a roadmap, two contentions each in claim, because, evidence, impact order, then a short conclusion. Later speeches begin with a refutation of a named speaker before the new contention. After each of her speeches, play other students who ask her two brief questions; she answers in one or two sentences and steers back to her case, and sometimes she must ask a pointed question of a speaker the coach plays. Judges score argument quality, refutation, delivery and questioning, so those are what she is trained on. Session flow: read the bill in two sentences, act as presiding officer calling on speakers, play one opposing student who gives a short speech with a flaw she can attack, then call on her. Never write her speech for her.',
+  'Lincoln-Douglas': 'One against one, values debate. Her case has these parts in this order: introduction, VALUE (the big thing that matters most), CRITERION (how we measure the value), contention 1 box, contention 2 box, conclusion. Every contention must connect back to the value through the criterion. After her speech, run a short cross-examination: ask three brief, pointed questions about her weakest link and have her answer in one or two sentences. In rebuttal, coach her to attack the opponent value or criterion first, then their contentions, then say why her side wins on the value ("voters").',
+  'Public Forum': 'Two against two, about current events. Case: introduction, contention 1, contention 2, each with claim, warrant, evidence and impact. In rebuttal: answer their points, then weigh impacts.',
+  'Impromptu': 'She gets a topic with almost no prep time. Frame: state point, give reason, give example, restate point. Keep the roadmap to one sentence.',
+  'Extemp': 'She answers a question about a real-world issue after short prep. Frame: hook, answer to the question, three points with an example each, conclusion that answers the question again.',
+  'SPAR': 'Spontaneous argumentation: a quick one-on-one debate on a light topic with almost no prep. Flow: short constructive with a claim and two reasons, cross-examination questions, rebuttal that answers one of the opponent reasons, one-sentence conclusion.',
+  'Congress (mock)': 'Mock legislature. She speaks for or against a bill. Frame: state for or against, two reasons with examples, and after the first speaker she must respond to something a previous speaker said. Keep the coach as the other legislators.',
+  'Pro/Con practice': 'Simple pro and con argument practice on an everyday topic.'
+};
+
+/* the concrete frame the coach teaches, so "be organized" always has a shape */
+const FRAMES = {
+  older: 'ROADMAP, then one BOX per argument, then CLOSE. Roadmap: "I have two arguments: first X, second Y." Each box has four parts in this order: LABEL ("My first argument is..."), CLAIM (one sentence), BECAUSE (why it is true), EXAMPLE (proof), then SO WHAT (why it matters). Close: two sentences that repeat the arguments and say why they win.',
+  younger: 'SIDE, FIRST, SECOND, SO. Say "I think..." for her side. Then "First, ... because ..." with an example. Then "Second, ... because ..." with an example. Finish with "So, that is why I think ..." repeating her side.'
+};
+
+const MODES = {round:'Live round', drill:'Skill drill', judge:'Judge my speech', prep:'Build a case'};
+const MODE_DESC = {
+  round:'Debate the coach on a topic',
+  drill:'Short reps on one skill',
+  judge:'Give a speech, get judged',
+  prep:'Coach asks, you build the case'
+};
+
+/* ============ data ============ */
+function newKid(id) {
+  const base = {
+    older: {id:'older', name:'Older', age:12, grade:'', color:'#2f7f7b',
+      division:'Middle school team',
+      formats:['Congress','Lincoln-Douglas','Public Forum','Impromptu','Extemp'], target:180, prep:120, words:120, notes:[]},
+    younger: {id:'younger', name:'Younger', age:9, grade:'', color:'#cc5a3a',
+      division:'Beginner',
+      formats:['SPAR','Impromptu','Extemp','Congress (mock)','Pro/Con practice'], target:60, prep:120, words:50, notes:[]}
+  }[id];
+  return Object.assign({eventDate:'', eventInfo:'', eventTopics:''}, base, {notes: base.notes.map(t => ({text:t, date:today()})), sessions:[], srs:{}, homework:null});
+}
+function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } }
+function save() {
+  try {
+    Object.values(db.kids).forEach(k => k.sessions.forEach((s, i) => { if (i < k.sessions.length - 30) delete s.transcript; }));
+    localStorage.setItem(KEY, JSON.stringify(db));
+  } catch (e) { toast('Could not save (storage full?)'); }
+}
+let db = load() || {v:1, settings:{apiKey:'', model:'claude-sonnet-5', speak:true, rate:1, voice:'', autoSend:true},
+                    kids:{older:newKid('older'), younger:newKid('younger')}};
+db.settings = Object.assign({apiKey:'', model:'claude-sonnet-5', speak:true, rate:1, voice:'', autoSend:true}, db.settings);
+/* keep saved profiles current when the app is updated: formats always follow the app, event fields fill in once */
+['older', 'younger'].forEach(id => {
+  const d = newKid(id), k = db.kids[id];
+  if (!k) { db.kids[id] = d; return; }
+  k.formats = d.formats;
+  if (k.eventInfo === undefined) { k.eventInfo = d.eventInfo; k.eventDate = d.eventDate; }
+  if (k.eventTopics === undefined) k.eventTopics = d.eventTopics;
+  if (k.prep === undefined) k.prep = d.prep;
+});
+const setupTopics = k => { const seen = new Set(); return eventTopicList(k).concat((k.recentTopics || []).slice(0, 3), pick(TOPICS[k.id], 3)).filter(t => !seen.has(t) && seen.add(t)); };
+const eventTopicList = k => String(k.eventTopics || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 6);
+
+let ui = {view:'home', kidId:null, setup:null, busy:false, err:'', retry:null, result:null, t0:0, secs:null};
+
+/* ============ progress + curriculum ============ */
+const skillHist = (k, id) => k.sessions.filter(s => s.scores && typeof s.scores[id] === 'number').map(s => s.scores[id]);
+const recent = (k, id, n = 3) => avg(skillHist(k, id).slice(-n));
+const prior = (k, id, n = 3) => avg(skillHist(k, id).slice(-2 * n, -n));
+
+function updateSrs(k, scores) {
+  const steps = [2, 4, 8, 16, 32, 64];
+  Object.keys(scores).forEach(id => {
+    const sc = scores[id]; if (typeof sc !== 'number') return;
+    const s = k.srs[id] || {step:0};
+    s.step = sc >= 4 ? Math.min(s.step + 1, steps.length - 1) : (sc === 3 ? s.step : 0);
+    s.due = addDays(today(), steps[s.step]);
+    k.srs[id] = s;
+  });
+}
+function pickFocus(k) {
+  const rub = RUBRICS[k.id];
+  if (!k.sessions.some(s => s.scores && Object.keys(s.scores).length))
+    return {id:'baseline', name:'Baseline check', why:'first session: the coach measures where she is starting'};
+  const t = today();
+  const rows = rub.map(r => ({r, avg:recent(k, r.id), due:(k.srs[r.id] || {}).due}));
+  const due = rows.filter(x => x.avg != null && x.due && x.due <= t).sort((a, b) => a.avg - b.avg);
+  if (due.length) return {id:due[0].r.id, name:due[0].r.name, why:'due for review and still her weakest of the due skills'};
+  const unseen = rows.filter(x => x.avg == null);
+  if (unseen.length) return {id:unseen[0].r.id, name:unseen[0].r.name, why:'not scored yet'};
+  const low = rows.slice().sort((a, b) => a.avg - b.avg)[0];
+  return {id:low.r.id, name:low.r.name, why:'lowest recent score'};
+}
+function focusById(k, id) {
+  if (id === 'baseline') return {id:'baseline', name:'Baseline check', why:'chosen by you'};
+  const r = RUBRICS[k.id].find(x => x.id === id);
+  return {id:r.id, name:r.name, why:'chosen by you'};
+}
+
+/* ============ prompts ============ */
+const daysTo = k => k.eventDate ? Math.ceil((new Date(k.eventDate + 'T12:00:00') - new Date()) / 864e5) : null;
+function eventBlock(k) {
+  if (!k.eventInfo && !k.eventDate) return '';
+  const d = daysTo(k);
+  return `\nUPCOMING EVENT\n${d != null && d >= 0 ? `The event is in ${d} day${d === 1 ? '' : 's'} (${k.eventDate}). Aim today's practice at what she will face there. ` : ''}${eventTopicList(k).length ? 'Topics she is known to be debating there: ' + eventTopicList(k).join(' | ') + '. ' : ''}Details from her family (rules, schedule, bills, judging ballot). Treat these as more authoritative than the generic format guide:\n${String(k.eventInfo || '').slice(0, 4000)}\n`;
+}
+function buildSystem(k, A) {
+  const rub = RUBRICS[k.id];
+  const anchors = rub.map(r => `${r.name}: 1 = ${r.a[1]}; 3 = ${r.a[3]}; 5 = ${r.a[5]}`).join('\n');
+  const trend = rub.map(r => { const a = recent(k, r.id); return `${r.name}: ${a == null ? 'not scored yet' : a.toFixed(1) + '/5'}`; }).join(', ');
+  const last = k.sessions.slice(-5).map(s => `- ${s.date}, ${MODES[s.mode] || s.mode} on "${s.topic}": ${s.summary || 'no summary'} Fixes given: ${(s.fixes || []).join('; ') || 'none'}`).join('\n') || '(none yet: this is her first session)';
+  const notes = k.notes.map(n => '- ' + n.text).join('\n') || '(nothing yet)';
+  const due = rub.filter(r => k.srs[r.id] && k.srs[r.id].due <= today()).map(r => r.name).join(', ');
+  const hw = k.homework && !k.homework.done ? `Last homework, not yet confirmed done: ${k.homework.text}` : '';
+  const usesSide = A.mode === 'round' || A.mode === 'judge';
+  const words = k.words;
+  const plans = {
+    round: `LIVE ROUND. If the format guide above describes a chamber (Congress), run the session exactly as that guide describes instead of a one-on-one debate. Otherwise you are the opposing debater. Sequence: (1) In two short sentences set the scene: the topic, her side, the time she should aim for (${fmt(k.target)}). Ask for her opening speech. (2) After each of her speeches, answer as the opposing side in a short rebuttal that attacks her weakest link, then ask her one pointed question. (3) Run three exchanges, then say the round is over and tell her to tap Finish to get her scorecard. Hold detailed feedback for the scorecard. Only pause the round for a 15 second coaching tip if she misses something basic about the focus skill. If she is stuck, give a hint as a question first.`,
+    drill: `SKILL DRILL on ${A.focus.name}. Explain the skill in at most three sentences using an example from her interests. Then run four or five short reps: give a tiny prompt, she answers in one to three sentences, you give exactly one fix, she redoes it. Make each rep a little harder. If the focus is Organization, use these reps in order: (a) read five scrambled points about an everyday topic and have her put them in the right order using the frame; (b) give her a topic and only the roadmap sentence to say; (c) build one full box or reason with the frame; (d) a short full speech in the frame with no help. If the focus is a baseline check, mix one quick rep of each skill instead. After the last rep, tell her to tap Finish.`,
+    judge: `JUDGE MODE. Ask her to give a complete speech on the topic from her assigned side, aiming for ${fmt(k.target)}. Then act as a judge: name one thing done well, then one thing to fix (prefer the focus skill), then have her redo just that part of the speech. Repeat once with a new speech or a new part, then tell her to tap Finish.`,
+    prep: `CASE PREP. Guide her to build her own case by asking questions, never writing it for her: what is her claim in one sentence, what are two or three reasons, for each reason ask "why is that true" and "what would the other side say", what example or evidence proves it, and what order is strongest. Give hints only when she is stuck. Near the end, read back her outline in a few sentences and tell her to tap Finish.`
+  };
+  return `You are ${k.name}'s personal debate coach and tutor, working with her over several years. You are a teacher running structured practice, not a chat buddy.
+
+STUDENT
+${k.name}, age ${k.age}, ${k.grade}. Division: ${k.division}. Format today: ${A.format}. ${FORMAT_GUIDE[A.format] || ''}
+What you know about her:
+${notes}
+${eventBlock(k)}
+RECENT SESSIONS
+${last}
+
+CURRENT SCORES (average of last three sessions, out of 5)
+${trend}
+Skills due for spaced review: ${due || 'none'}
+${hw}
+
+TODAY'S SESSION
+${plans[A.mode]}
+Topic: ${A.topic}${usesSide ? `. She argues the ${A.side} side.` : '.'}
+Focus skill: ${A.focus.name} (${A.focus.why}).
+Open the session by greeting ${k.name} in one short sentence${hw ? ', asking briefly whether she finished her homework and what she learned from it,' : ''} and then starting the plan. Bracketed notes on her messages, like [spoke 0:48, about 130 wpm], are timing data from the app. Use them to coach pace and time use, but never read them aloud. Before a speech she has not prepared, remind her in one short sentence to tap Start prep, which gives her ${fmt(k.prep || 120)} of prep time, and wait for her to speak.
+
+COACHING RULES
+- Ask before telling. Give a hint before the answer. Give a model answer last.
+- One fix at a time. Do not stack corrections.
+- Praise only what is specific and true. Never inflate. If an answer is weak or off topic, say so kindly and directly.
+- Do the thinking with her, not for her. She should do most of the talking.
+- Organization is the biggest weakness for ${k.name}, so it must be taught, not mentioned. Never say "stay organized", "be more organized" or "structure your speech" as advice. Teach this frame and use its exact words: ${FRAMES[k.id]}
+- When her speech was disorganized: repeat back the order she actually said in one short sentence, point to the exact moment it jumped, then have her redo just that part using the frame's sentence starters. Give her the starter words, not a lecture.
+- Every piece of feedback must point to something she actually said. If you could say it to any student, do not say it.
+- Do not reveal numeric scores during the session.
+- Keep every topic appropriate for a child. If a topic drifts somewhere unsuitable, steer back kindly.
+
+STYLE RULES
+- Everything you write is read aloud by text-to-speech: plain sentences only. No markdown, no bullet lists, no emoji, no stage directions, no abbreviations like "e.g."
+- Speak to ${k.name} in language a ${k.age} year old follows easily, warm but businesslike.
+- At most about ${words} words per turn.
+- End every turn with exactly one clear question or instruction so she knows what to do next.
+- Her words come from voice transcription, so ignore odd spelling, missing punctuation and homophones.
+
+RUBRIC (for your own guidance)
+${anchors}`;
+}
+
+function evalSystem(k) {
+  const anchors = RUBRICS[k.id].map(r => `${r.id} (${r.name}): 1 = ${r.a[1]}; 3 = ${r.a[3]}; 5 = ${r.a[5]}`).join('\n');
+  return `You are an exacting, fair debate judge scoring one practice session for a young student named ${k.name}, age ${k.age}. Division: ${k.division}.
+
+Score only skills she actually demonstrated; omit the rest. Use the anchors exactly. A 3 is solid for her division, a 5 is rare and near flawless, a 1 means absent. Do not inflate scores to be encouraging: her progress over years is measured by these numbers, so honesty matters more than comfort. Speech-to-text removes "um" and "uh", so do not judge filler words; use the timing and words-per-minute notes only as clues about pace and time use. Typed turns have no timing.
+
+Anchors:
+${anchors}
+
+The frame she is being taught, which you judge Organization against: ${FRAMES[k.id]}
+${eventBlock(k)}
+
+FEEDBACK QUALITY: never write generic advice such as "stay organized", "practice more" or "be clear". Every item in "fixes" must (1) point to a specific moment in her actual words, (2) say exactly what to do differently, and (3) include a short example of the better version, using her own topic. If Organization was weak, write the order she actually used and the order she should use, in one line each.
+
+Reply with JSON only, no other text, in exactly this shape:
+{"scores":{"<skill id>":<integer 1-5>},"strengths":["<max 2, specific>"],"fixes":["<max 2, specific and actionable>"],"summary":"<one or two sentences to ${k.name}, second person>","memory_updates":["<0-3 short durable facts about her habits, interests or preferences that a coach should remember next year>"],"homework":"<one specific task of 5 to 10 minutes that targets her top fix>"}
+
+Write summary, strengths, fixes and homework directly to ${k.name} in simple words a ${k.age} year old can read.`;
+}
+function evalUser(k, A) {
+  const lines = A.messages.filter(m => !m.hidden).map(m => {
+    if (m.role === 'assistant') return 'COACH: ' + m.content;
+    const t = m.secs ? ` (spoke ${fmt(m.secs)}${m.words && m.secs >= 5 ? ', about ' + Math.round(m.words / (m.secs / 60)) + ' wpm' : ''})` : ' (typed)';
+    return 'STUDENT' + t + ': ' + m.content;
+  }).join('\n\n');
+  return `Session: ${MODES[A.mode]}. Format: ${A.format} (${FORMAT_GUIDE[A.format] || ''}). Topic: ${A.topic}. Her side: ${A.side || 'n/a'}. Target speech length: ${fmt(k.target)}. Focus skill: ${A.focus.name}.\n\nTRANSCRIPT\n${lines}`;
+}
+
+/* ============ Claude API ============ */
+async function callClaude(system, messages, maxTokens) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{'content-type':'application/json','x-api-key':db.settings.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body: JSON.stringify({model:db.settings.model, max_tokens:maxTokens || 400, system, messages})
+  });
+  if (!r.ok) { const t = await r.text(); throw new Error('API error ' + r.status + ': ' + t.slice(0, 160)); }
+  const j = await r.json();
+  return j.content.filter(b => b.type === 'text').map(b => b.text).join('');
+}
+function parseJson(t) {
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a < 0 || b < a) throw new Error('Scorer did not return JSON');
+  return JSON.parse(t.slice(a, b + 1));
+}
+
+/* ============ voice ============ */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, wantSend = false, timerId = null;
+function speak(text) {
+  if (!db.settings.speak || !('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = db.settings.rate;
+  const v = speechSynthesis.getVoices().find(v => v.name === db.settings.voice);
+  if (v) u.voice = v;
+  speechSynthesis.speak(u);
+}
+function stopSpeak() { try { speechSynthesis.cancel(); } catch (e) {} }
+function updateMic() {
+  const b = $('#mic'); if (!b) return;
+  b.textContent = listening ? '⏹ Tap to stop' : '🎤 Tap to speak';
+  b.classList.toggle('live', listening);
+}
+let prepEnd = 0, prepId = null;
+function clearPrep() { if (prepId) clearInterval(prepId); prepId = null; prepEnd = 0; }
+function updatePrepBtn() {
+  const b = $('#prepBtn'); if (!b || !db.active) return;
+  b.textContent = prepId ? 'Stop prep' : 'Start prep (' + fmt(db.kids[db.active.kidId].prep || 120) + ')';
+}
+function startPrep() {
+  if (!db.active) return;
+  if (prepId) { clearPrep(); tickTimer(); updatePrepBtn(); return; }
+  stopSpeak();
+  if (listening) { wantSend = false; rec && rec.stop(); }
+  prepEnd = Date.now() + (db.kids[db.active.kidId].prep || 120) * 1000;
+  prepId = setInterval(() => {
+    if (Date.now() >= prepEnd) {
+      clearPrep();
+      try { navigator.vibrate && navigator.vibrate([300, 100, 300]); } catch (e) {}
+      toast('Prep time is up. Begin your speech.'); speak('Prep time is up. Begin your speech.');
+    }
+    tickTimer(); updatePrepBtn();
+  }, 250);
+  tickTimer(); updatePrepBtn();
+}
+function tickTimer() {
+  const el = $('#timer'); if (!el || !db.active) return;
+  const k = db.kids[db.active.kidId];
+  if (prepId) { el.textContent = 'Prep ' + fmt(Math.max(0, Math.ceil((prepEnd - Date.now()) / 1000))); return; }
+  el.textContent = listening ? `${fmt((Date.now() - ui.t0) / 1000)} / aim for ${fmt(k.target)}` : `Aim for ${fmt(k.target)}`;
+}
+function toggleMic() {
+  if (listening) { wantSend = true; rec && rec.stop(); return; }
+  if (!SR) { toast('Voice input is not available in this browser. Type instead.'); return; }
+  stopSpeak(); if (prepId) { clearPrep(); updatePrepBtn(); }
+  rec = new SR(); rec.lang = 'en-US'; rec.continuous = true; rec.interimResults = true;
+  rec.onresult = e => { $('#draft').value = Array.from(e.results).map(r => r[0].transcript).join(' ').trim(); };
+  rec.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Please allow microphone and speech recognition for this site.'); };
+  rec.onend = () => {
+    listening = false; ui.secs = (Date.now() - ui.t0) / 1000;
+    clearInterval(timerId); updateMic(); tickTimer();
+    if (wantSend && db.settings.autoSend && $('#draft').value.trim()) sendDraft();
+    wantSend = false;
+  };
+  ui.t0 = Date.now(); ui.secs = null; wantSend = false;
+  try { rec.start(); listening = true; } catch (e) { toast('Could not start the microphone.'); return; }
+  timerId = setInterval(tickTimer, 250); updateMic();
+}
+
+/* ============ session flow ============ */
+function startSession() {
+  const s = ui.setup, k = db.kids[ui.kidId];
+  if (!db.settings.apiKey) { toast('Add your API key first'); ui.view = 'settings'; return render(); }
+  try { speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch (e) {}
+  const typed = (s.topic || '').trim();
+  if (typed && !eventTopicList(k).includes(typed) && !TOPICS[k.id].includes(typed)) k.recentTopics = [typed].concat((k.recentTopics || []).filter(x => x !== typed)).slice(0, 8);
+  const focus = s.focusId === 'auto' ? pickFocus(k) : focusById(k, s.focusId);
+  const side = s.side === 'auto' ? (Math.random() < .5 ? 'Pro' : 'Con') : s.side;
+  db.active = {kidId:k.id, mode:s.mode, format:s.format, topic:(s.topic || '').trim() || 'Coach chooses a topic that suits the focus skill', side, focus, messages:[], started:Date.now()};
+  save(); ui.view = 'session'; ui.err = ''; ui.retry = null; render();
+  coachTurn('Begin the session.', true);
+}
+async function coachTurn(text, hidden, meta) {
+  const A = db.active, k = db.kids[A.kidId];
+  A.messages.push({role:'user', content:text, hidden:!!hidden, secs:meta && meta.secs, words:meta && meta.words});
+  ui.busy = true; ui.err = ''; ui.retry = null; renderMsgs(); save();
+  try {
+    const api = A.messages.map(m => ({role:m.role, content: m.content + (m.secs ? ` [spoke ${fmt(m.secs)}${m.words && m.secs >= 5 ? ', about ' + Math.round(m.words / (m.secs / 60)) + ' wpm' : ''}]` : '')}));
+    const reply = (await callClaude(buildSystem(k, A), api, 350)).trim();
+    A.messages.push({role:'assistant', content:reply});
+    speak(reply);
+  } catch (e) {
+    A.messages.pop(); ui.err = e.message || String(e); ui.retry = {text, hidden, meta};
+  }
+  ui.busy = false; save(); renderMsgs();
+}
+function sendDraft() {
+  const d = $('#draft'); const t = d.value.trim();
+  if (!t || ui.busy || listening) return;
+  const secs = ui.secs ? Math.round(ui.secs) : null;
+  d.value = ''; ui.secs = null;
+  coachTurn(t, false, {secs, words:t.split(/\s+/).length});
+}
+async function finish() {
+  const A = db.active;
+  const turns = A.messages.filter(m => m.role === 'user' && !m.hidden).length;
+  if (turns < 2) { if (confirm('Too short to score. Discard this session?')) discard(); return; }
+  stopSpeak(); clearPrep(); if (listening) { wantSend = false; rec && rec.stop(); }
+  await evaluate();
+}
+function discard() { stopSpeak(); clearPrep(); delete db.active; save(); ui.view = 'home'; render(); }
+async function evaluate() {
+  const A = db.active, k = db.kids[A.kidId], rub = RUBRICS[k.id];
+  ui.view = 'result'; ui.result = null; ui.busy = true; ui.err = ''; render();
+  try {
+    const j = parseJson(await callClaude(evalSystem(k), [{role:'user', content:evalUser(k, A)}], 1100));
+    const scores = {};
+    Object.keys(j.scores || {}).forEach(id => { const v = Math.round(Number(j.scores[id])); if (rub.some(r => r.id === id) && v >= 1 && v <= 5) scores[id] = v; });
+    finalize(k, A, {scores, strengths:(j.strengths || []).slice(0, 2), fixes:(j.fixes || []).slice(0, 2), summary:j.summary || '', homework:j.homework || '', mem:(j.memory_updates || []).slice(0, 3)});
+  } catch (e) { ui.err = e.message || String(e); }
+  ui.busy = false; render();
+}
+function finalize(k, A, r) {
+  const rec = {id:uid(), date:today(), mode:A.mode, format:A.format, topic:A.topic, side:A.side, focus:A.focus.id,
+    scores:r.scores, strengths:r.strengths, fixes:r.fixes, summary:r.summary, homework:r.homework,
+    turns:A.messages.filter(m => m.role === 'user' && !m.hidden).length,
+    transcript:A.messages.filter(m => !m.hidden).map(m => ({role:m.role, content:m.content, secs:m.secs}))};
+  updateSrs(k, r.scores);
+  const added = [];
+  (r.mem || []).forEach(t => { t = String(t).slice(0, 160); if (t && !k.notes.some(n => n.text === t)) { k.notes.push({text:t, date:today()}); added.push(t); } });
+  while (k.notes.length > 40) k.notes.shift();
+  rec.added = added;
+  if (r.homework) k.homework = {text:r.homework, date:today(), done:false};
+  k.sessions.push(rec);
+  delete db.active; ui.result = rec; ui.kidId = k.id; save();
+}
+async function saveUnscored() {
+  const A = db.active, k = db.kids[A.kidId];
+  finalize(k, A, {scores:{}, strengths:[], fixes:[], summary:'Saved without a scorecard.', homework:'', mem:[]});
+  ui.err = ''; render();
+}
+
+/* ============ views ============ */
+function setAccent(k) { document.documentElement.style.setProperty('--accent', k ? k.color : '#2f6f6d'); }
+function toast(t) { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;left:16px;right:16px;top:calc(12px + env(safe-area-inset-top));background:#1d2433;color:#fff;padding:12px;border-radius:12px;z-index:9;text-align:center'; document.body.appendChild(d); setTimeout(() => d.remove(), 3200); }
+
+function render() {
+  const a = $('#app');
+  const v = {home:vHome, kid:vKid, setup:vSetup, session:vSession, result:vResult, settings:vSettings}[ui.view];
+  setAccent(ui.view === 'home' || ui.view === 'settings' ? null : db.kids[ui.kidId || (db.active && db.active.kidId)]);
+  v(a); window.scrollTo(0, ui.view === 'session' ? document.body.scrollHeight : 0);
+}
+function weekCount(k) { const c = addDays(today(), -6); return k.sessions.filter(s => s.date >= c).length; }
+
+function vHome(a) {
+  const kids = Object.values(db.kids);
+  a.innerHTML = `<div class="top"><h1>Debate Coach</h1><button class="ghost sm" data-act="settings">Settings</button></div><div class="wrap">
+  ${!db.settings.apiKey ? `<div class="note" data-act="settings">Add your API key in Settings to begin.</div>` : ''}
+  ${db.active ? `<div class="card"><b>Session in progress</b><div class="mute small">${esc(db.kids[db.active.kidId].name)} · ${esc(MODES[db.active.mode])} · ${esc(db.active.topic)}</div><div class="row" style="margin-top:8px"><button class="sm" data-act="resume">Resume</button><button class="ghost sm" data-act="discard">Discard</button></div></div>` : ''}
+  <p class="mute">Who is practicing?</p>
+  ${kids.map(k => { const last = k.sessions[k.sessions.length - 1]; return `<div class="card kidcard" style="border-left-color:${k.color}" data-act="openKid" data-id="${k.id}"><h2>${esc(k.name)}</h2><div class="mute small">${k.sessions.length} sessions · ${weekCount(k)} this week${last ? ' · last ' + last.date : ''}</div></div>`; }).join('')}
+  </div>`;
+}
+
+function vKid(a) {
+  const k = db.kids[ui.kidId], rub = RUBRICS[k.id], f = pickFocus(k);
+  a.innerHTML = `<div class="top"><button class="ghost sm" data-act="home">‹ Back</button><h1>${esc(k.name)}</h1><span></span></div><div class="wrap">
+  <div class="card"><h2>Today's plan</h2>
+    ${daysTo(k) != null && daysTo(k) >= 0 ? `<div class="up"><b>${daysTo(k)} day${daysTo(k) === 1 ? '' : 's'}</b> until her event (${esc(k.eventDate)})</div>` : ''}
+    <div>Focus: <b>${esc(f.name)}</b></div><div class="mute small">${esc(f.why)}</div>
+    <button class="block" style="margin-top:12px" data-act="newSession">Start a session</button></div>
+  ${k.homework && !k.homework.done ? `<div class="card"><h2>Homework</h2><div>${esc(k.homework.text)}</div><div class="mute small">Assigned ${k.homework.date}</div><button class="sm ghost" style="margin-top:8px" data-act="hwDone">Mark done</button></div>` : ''}
+  <div class="card"><h2>Skills</h2><div class="mute small">Average of last 3 scores, out of 5. Arrow compares with the 3 before.</div>
+  ${rub.map(r => { const c = recent(k, r.id), p = prior(k, r.id); const d = c != null && p != null ? c - p : null;
+    return `<div class="skill"><div class="row"><span>${esc(r.name)}</span><span>${c == null ? '–' : c.toFixed(1)} ${d == null ? '' : d > .2 ? '<span class="up">▲</span>' : d < -.2 ? '<span class="down">▼</span>' : '<span class="mute">●</span>'}</span></div><div class="bar"><i style="width:${c == null ? 0 : c / 5 * 100}%"></i></div></div>`; }).join('')}</div>
+  <div class="card"><h2>Recent sessions</h2>${k.sessions.length ? k.sessions.slice(-8).reverse().map(s => { const i = k.sessions.indexOf(s); return `<div class="note-row" data-act="viewSession" data-i="${i}" style="cursor:pointer"><span><b>${s.date}</b> · ${esc(MODES[s.mode] || s.mode)}<br><span class="mute small">${esc(s.topic)}</span></span><span class="mute">›</span></div>`; }).join('') : '<div class="mute">No sessions yet.</div>'}</div>
+  <div class="card"><h2>What the coach remembers</h2>
+  ${k.notes.map((n, i) => `<div class="note-row"><span>${esc(n.text)}</span><button class="ghost sm" data-act="delNote" data-i="${i}">✕</button></div>`).join('') || '<div class="mute">Nothing yet.</div>'}
+  <div class="row" style="margin-top:10px"><input id="newNote" class="grow" placeholder="Add something the coach should know"><button class="sm" data-act="addNote">Add</button></div>
+  <label>Name (the coach uses this)</label><input value="${esc(k.name)}" data-set-kid="name">
+  <label>Division (update as she moves up)</label><input id="division" value="${esc(k.division)}" data-set-kid="division">
+  <label>Age</label><input id="age" type="number" min="6" max="19" value="${k.age}" data-set-kid="age">
+  <label>Target speech length in seconds (set to her real tournament time)</label><input id="target" type="number" min="30" max="600" step="15" value="${k.target}" data-set-kid="target">
+  <label>Prep time before a speech, in seconds</label><input id="prep" type="number" min="0" max="1800" step="15" value="${k.prep || 120}" data-set-kid="prep">
+  <label>Event date</label><input type="date" value="${esc(k.eventDate || '')}" data-set-kid="eventDate">
+  <label>Topics she is working on (class or tournament), one per line. These appear first when she starts a session. Topics typed in a session are also remembered.</label><textarea rows="3" data-set-kid="eventTopics">${esc(k.eventTopics || '')}</textarea>
+  <label>Event details: paste rules, schedule, bills or the judging ballot. The coach uses this in every session.</label><textarea rows="8" data-set-kid="eventInfo">${esc(k.eventInfo || '')}</textarea></div>
+  </div>`;
+}
+
+function vSetup(a) {
+  const k = db.kids[ui.kidId], s = ui.setup, rub = RUBRICS[k.id], usesSide = s.mode === 'round' || s.mode === 'judge';
+  a.innerHTML = `<div class="top"><button class="ghost sm" data-act="openKid" data-id="${k.id}">‹ Back</button><h1>New session</h1><span></span></div><div class="wrap">
+  <div class="modes">${Object.keys(MODES).map(m => `<button class="chip ${s.mode === m ? 'on' : ''}" data-act="mode" data-m="${m}"><b>${MODES[m]}</b><br><span class="small mute">${MODE_DESC[m]}</span></button>`).join('')}</div>
+  <label>Format</label><select data-set-setup="format">${k.formats.map(f => `<option ${f === s.format ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select>
+  <label>Topic</label>${s.topics.map(t => `<button class="chip ${s.topic === t ? 'on' : ''}" data-act="topic" data-t="${esc(t)}">${esc(t)}</button>`).join('')}
+  <div class="row"><button class="ghost sm" data-act="reroll">More topics</button></div>
+  <textarea rows="3" style="margin-top:8px" placeholder="Or paste your own topic, or the real bill text" data-set-setup="topic">${s.topics.includes(s.topic) ? '' : esc(s.topic)}</textarea>
+  ${usesSide ? `<label>Her side</label><select data-set-setup="side">${[['auto','Coach picks'],['Pro','Pro'],['Con','Con']].map(o => `<option value="${o[0]}" ${s.side === o[0] ? 'selected' : ''}>${o[1]}</option>`).join('')}</select>` : ''}
+  <label>Focus skill</label><select data-set-setup="focusId"><option value="auto" ${s.focusId === 'auto' ? 'selected' : ''}>Coach chooses (${esc(pickFocus(k).name)})</option>${rub.map(r => `<option value="${r.id}" ${s.focusId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+  <button class="block" style="margin-top:20px" data-act="start">Start</button></div>`;
+}
+
+function vSession(a) {
+  const A = db.active, k = db.kids[A.kidId];
+  a.innerHTML = `<div class="top"><div><b>${esc(k.name)}</b> · ${esc(MODES[A.mode])}<div class="mute small">${esc(A.topic)}${A.side && (A.mode === 'round' || A.mode === 'judge') ? ' · ' + A.side : ''}</div></div><button class="sm" data-act="finish">Finish</button></div>
+  <div class="wrap"><div id="msgs"></div></div>
+  <div class="composer"><div class="row between"><span id="timer" class="mute small">Aim for ${fmt(k.target)}</span><span class="row"><button id="prepBtn" class="ghost sm" data-act="prep">Start prep (${fmt(k.prep || 120)})</button><button class="ghost sm" data-act="replay">🔊 Replay</button></span></div>
+  <textarea id="draft" rows="2" placeholder="Tap the mic and speak, or type here"></textarea>
+  <div class="row"><button id="mic" class="mic" data-act="mic">🎤 Tap to speak</button><button data-act="send">Send</button></div></div>`;
+  renderMsgs();
+}
+function renderMsgs() {
+  const el = $('#msgs'); if (!el) return; const A = db.active; if (!A) return;
+  el.innerHTML = A.messages.filter(m => !m.hidden).map(m => m.role === 'assistant'
+      ? `<div class="bubble coach">${esc(m.content)}</div>`
+      : `<div class="bubble kid">${esc(m.content)}${m.secs ? `<small>${fmt(m.secs)}</small>` : ''}</div>`).join('')
+    + (ui.busy ? '<div class="bubble coach mute"><span class="spin"></span>Coach is thinking…</div>' : '')
+    + (ui.err ? `<div class="note">${esc(ui.err)} <button class="sm" data-act="retry">Retry</button></div>` : '');
+  window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'});
+}
+
+function vResult(a) {
+  if (ui.busy) { a.innerHTML = `<div class="wrap"><div class="card" style="margin-top:40px"><span class="spin"></span>Scoring the session…</div></div>`; return; }
+  if (ui.err && db.active) { a.innerHTML = `<div class="wrap"><div class="note" style="margin-top:40px">${esc(ui.err)}</div><button class="block" data-act="rescore">Try scoring again</button><button class="block ghost" style="margin-top:8px" data-act="saveUnscored">Save without a scorecard</button></div>`; return; }
+  const r = ui.result, k = db.kids[ui.kidId], rub = RUBRICS[k.id];
+  const idx = k.sessions.findIndex(s => s.id === r.id), before = k.sessions.slice(0, Math.max(idx, 0));
+  a.innerHTML = `<div class="top"><h1>Scorecard</h1><span class="mute small">${r.date}</span></div><div class="wrap">
+  <div class="card"><div class="mute small">${esc(MODES[r.mode] || r.mode)} · ${esc(r.topic)}</div><p>${esc(r.summary)}</p></div>
+  ${Object.keys(r.scores || {}).length ? `<div class="card"><h2>Scores</h2>${rub.filter(x => typeof r.scores[x.id] === 'number').map(x => {
+      const h = before.filter(s => s.scores && typeof s.scores[x.id] === 'number').slice(-3).map(s => s.scores[x.id]), p = avg(h), sc = r.scores[x.id];
+      const d = p == null ? '' : sc > p + .2 ? ' <span class="up">▲</span>' : sc < p - .2 ? ' <span class="down">▼</span>' : '';
+      return `<div class="skill"><div class="row"><span>${esc(x.name)}</span><span>${sc}/5${d}</span></div><div class="bar"><i style="width:${sc / 5 * 100}%"></i></div></div>`; }).join('')}</div>` : ''}
+  ${(r.strengths || []).length ? `<div class="card"><h2>Going well</h2><ul class="tight">${r.strengths.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+  ${(r.fixes || []).length ? `<div class="card"><h2>Work on</h2><ul class="tight">${r.fixes.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+  ${r.homework ? `<div class="card"><h2>Homework</h2>${esc(r.homework)}</div>` : ''}
+  ${(r.added || []).length ? `<div class="card"><h2>Coach will remember</h2><ul class="tight">${r.added.map(x => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+  <button class="block" data-act="openKid" data-id="${k.id}">Done</button></div>`;
+}
+
+function vSettings(a) {
+  const s = db.settings;
+  const voices = (window.speechSynthesis ? speechSynthesis.getVoices() : []).filter(v => /^en/i.test(v.lang));
+  a.innerHTML = `<div class="top"><button class="ghost sm" data-act="home">‹ Back</button><h1>Settings</h1><span></span></div><div class="wrap">
+  <div class="card"><label>Anthropic API key</label><input type="password" autocomplete="off" value="${esc(s.apiKey)}" data-set="apiKey" placeholder="sk-ant-…">
+  <div class="mute small" style="margin-top:6px">Stored only on this device. API usage is billed separately from a Claude subscription.</div>
+  <label>Model</label><input value="${esc(s.model)}" data-set="model"></div>
+  <div class="card"><div class="row between"><span>Coach speaks replies aloud</span><input type="checkbox" style="width:auto" ${s.speak ? 'checked' : ''} data-set="speak"></div>
+  <div class="row between" style="margin-top:10px"><span>Send automatically when I stop the mic</span><input type="checkbox" style="width:auto" ${s.autoSend ? 'checked' : ''} data-set="autoSend"></div>
+  <label>Speaking speed</label><input type="range" min="0.7" max="1.3" step="0.05" value="${s.rate}" data-set="rate">
+  <label>Voice</label><select data-set="voice"><option value="">Default</option>${voices.map(v => `<option ${v.name === s.voice ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>
+  <button class="ghost sm" style="margin-top:10px" data-act="testVoice">Test voice</button></div>
+  <div class="card"><h2>Backup</h2><div class="mute small">Everything lives on this device. Export a backup regularly; it never includes the API key.</div>
+  <div class="row" style="margin-top:8px"><button class="sm" data-act="export">Export</button><button class="ghost sm" data-act="import">Import</button></div></div></div>`;
+}
+
+/* ============ events ============ */
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act, k = db.kids[ui.kidId];
+  if (act === 'home') { ui.view = 'home'; ui.kidId = null; render(); }
+  else if (act === 'settings') { ui.view = 'settings'; render(); }
+  else if (act === 'openKid') { ui.kidId = b.dataset.id; ui.view = 'kid'; render(); }
+  else if (act === 'resume') { ui.view = 'session'; ui.kidId = db.active.kidId; render(); }
+  else if (act === 'discard') { if (confirm('Discard the session in progress?')) discard(); }
+  else if (act === 'newSession') { const et = eventTopicList(k); ui.setup = {mode:'round', format:k.formats[0], topic:et[0] || '', topics:setupTopics(k), side:'auto', focusId:'auto'}; ui.view = 'setup'; render(); }
+  else if (act === 'mode') { ui.setup.mode = b.dataset.m; render(); }
+  else if (act === 'topic') { ui.setup.topic = b.dataset.t; render(); }
+  else if (act === 'reroll') { ui.setup.topics = setupTopics(k); render(); }
+  else if (act === 'start') startSession();
+  else if (act === 'hwDone') { k.homework.done = true; save(); render(); }
+  else if (act === 'viewSession') { ui.result = k.sessions[+b.dataset.i]; ui.err = ''; ui.busy = false; ui.view = 'result'; render(); }
+  else if (act === 'addNote') { const i = $('#newNote'), t = i.value.trim(); if (t) { k.notes.push({text:t, date:today()}); save(); render(); } }
+  else if (act === 'delNote') { k.notes.splice(+b.dataset.i, 1); save(); render(); }
+  else if (act === 'prep') startPrep();
+  else if (act === 'mic') toggleMic();
+  else if (act === 'send') sendDraft();
+  else if (act === 'replay') { const A = db.active, last = A.messages.filter(m => m.role === 'assistant').pop(); if (last) speak(last.content); }
+  else if (act === 'retry') { const r = ui.retry; if (r) coachTurn(r.text, r.hidden, r.meta); }
+  else if (act === 'finish') finish();
+  else if (act === 'rescore') evaluate();
+  else if (act === 'saveUnscored') saveUnscored();
+  else if (act === 'testVoice') speak('Hi! I am your debate coach. Ready when you are.');
+  else if (act === 'export') exportData();
+  else if (act === 'import') $('#importFile').click();
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.set) { const key = t.dataset.set; db.settings[key] = t.type === 'checkbox' ? t.checked : (key === 'rate' ? +t.value : t.value); save(); }
+  else if (t.dataset.setKid) { const k = db.kids[ui.kidId]; k[t.dataset.setKid] = t.type === 'number' ? +t.value : t.value; save(); }
+  else if (t.dataset.setSetup) { const key = t.dataset.setSetup; ui.setup[key] = t.value; if (key === 'topic') { /* typed topic: no re-render so the keyboard stays open */ } }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.setSetup && t.dataset.setSetup !== 'topic') render();
+});
+function exportData() {
+  const copy = JSON.parse(JSON.stringify(db)); copy.settings.apiKey = ''; delete copy.active;
+  const b = new Blob([JSON.stringify(copy, null, 2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'debate-coach-backup-' + today() + '.json'; a.click();
+}
+$('#importFile').addEventListener('change', e => {
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const j = JSON.parse(r.result);
+      if (!j.kids || !j.kids.older || !j.kids.younger) throw new Error('Not a Debate Coach backup');
+      if (!confirm('Replace everything on this device with the backup?')) return;
+      const key = db.settings.apiKey; db = j; db.settings = Object.assign({apiKey:'', model:'claude-sonnet-5', speak:true, rate:1, voice:'', autoSend:true}, j.settings, {apiKey:key});
+      save(); ui.view = 'home'; render(); toast('Backup restored');
+    } catch (err) { toast('Import failed: ' + err.message); }
+  };
+  r.readAsText(f); e.target.value = '';
+});
+if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => { if (ui.view === 'settings') render(); };
+
+render();
+</script>
+</body>
+</html>
